@@ -1,26 +1,24 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Initial Chart Setup (moved from reports.php)
     const categoryData = {
-        labels: categoryLabels, // We'll define these variables in reports.php
+        labels: [],
         datasets: [{
-            data: categoryValues,
-            backgroundColor: [
+            data: [],
+                    backgroundColor: [
                 '#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6'
             ]
-        }]
+                }]
     };
 
     const trendData = {
-        labels: trendLabels,
+        labels: [],
         datasets: [{
             label: 'Monthly Spending',
-            data: trendValues,
+            data: [],
             borderColor: '#3498db',
             tension: 0.1
         }]
     };
 
-    // Create initial charts
     window.categoryChart = new Chart(document.getElementById('categoryChart'), {
         type: 'doughnut',
         data: categoryData,
@@ -47,35 +45,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Initialize date range picker with custom styling
     const dateInputs = document.querySelectorAll('.date-filter input[type="date"]');
     dateInputs.forEach(input => {
-        input.addEventListener('change', function() {
-            updateReports();
-        });
+        input.addEventListener('change', updateReports);
     });
 
-    // Dynamic chart updates
     async function updateReports() {
         const startDate = document.querySelector('input[name="start_date"]').value;
         const endDate = document.querySelector('input[name="end_date"]').value;
 
+        if (!startDate || !endDate) {
+            showToast('Please select both start and end dates', 'error');
+            return;
+        }
         try {
-            const response = await fetch(`get_report_data.php?start_date=${startDate}&end_date=${endDate}`);
+            const response = await fetch(`api/get_report_data.php?start_date=${startDate}&end_date=${endDate}`);
+            if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
+            
+            if (!data || !data.categories || !data.trends || !data.budgets) {
+                throw new Error('Invalid data format received');
+            }
             
             updateCategoryChart(data.categories);
             updateTrendChart(data.trends);
             updateBudgetComparison(data.budgets);
-            
             showToast('Reports updated successfully', 'success');
         } catch (error) {
-            showToast('Error updating reports', 'error');
+            console.error('Error updating reports:', error);
+            showToast('Error updating reports: ' + error.message, 'error');
         }
     }
 
-    // Enhanced Category Chart with interactions
     function updateCategoryChart(data) {
+        if (!data.labels || !data.values) return;
+        
         const ctx = document.getElementById('categoryChart').getContext('2d');
         
         if (window.categoryChart) {
@@ -123,8 +127,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Interactive Trend Chart
     function updateTrendChart(data) {
+        if (!data.labels || !data.values) return;
+        
         const ctx = document.getElementById('trendChart').getContext('2d');
         
         if (window.trendChart) {
@@ -191,12 +196,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Animated Budget Comparison
     function updateBudgetComparison(data) {
+        if (!Array.isArray(data)) return;
+        
         const container = document.querySelector('.budget-comparison');
+        if (!container) return;
+        
         container.innerHTML = '';
 
         data.forEach(item => {
+            if (!item.category || !item.budget || !item.spent) return;
+            
             const percentage = (item.spent / item.budget) * 100;
             const barClass = percentage > 100 ? 'over' : 'under';
 
@@ -221,67 +231,12 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
 
             container.appendChild(comparisonItem);
-            
-            // Animate bars
-            setTimeout(() => {
+        setTimeout(() => {
                 comparisonItem.querySelector('.actual-bar').style.opacity = '1';
             }, 100);
-        });
+}); 
     }
 
-    // Export functionality for reports
-    const exportButtons = {
-        pdf: createExportButton('PDF', 'file-pdf', exportToPDF),
-        excel: createExportButton('Excel', 'file-excel', exportToExcel),
-        image: createExportButton('Image', 'image', exportToImage)
-    };
-
-    function createExportButton(text, icon, handler) {
-        const button = document.createElement('button');
-        button.className = 'export-btn';
-        button.innerHTML = `<i class="fas fa-${icon}"></i> Export as ${text}`;
-        button.addEventListener('click', handler);
-        document.querySelector('.header').appendChild(button);
-        return button;
-    }
-
-    async function exportToPDF() {
-        const element = document.querySelector('.reports-grid');
-        try {
-            const canvas = await html2canvas(element);
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 211, 298);
-            pdf.save('financial_report.pdf');
-            showToast('PDF exported successfully', 'success');
-        } catch (error) {
-            showToast('Error exporting PDF', 'error');
-        }
-    }
-
-    function exportToExcel() {
-        const data = gatherReportData();
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Financial Report");
-        XLSX.writeFile(wb, "financial_report.xlsx");
-        showToast('Excel file exported successfully', 'success');
-    }
-
-    async function exportToImage() {
-        try {
-            const element = document.querySelector('.reports-grid');
-            const canvas = await html2canvas(element);
-            const link = document.createElement('a');
-            link.download = 'financial_report.png';
-            link.href = canvas.toDataURL();
-            link.click();
-            showToast('Image exported successfully', 'success');
-        } catch (error) {
-            showToast('Error exporting image', 'error');
-        }
-    }
-
-    // Toast notification system
     function showToast(message, type) {
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
@@ -296,6 +251,5 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 3000);
     }
 
-    // Initialize reports
-    updateReports();
-}); 
+    setTimeout(updateReports, 500);
+});

@@ -12,11 +12,17 @@ $error = '';
 
 // Handle expense submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Validate and sanitize inputs
     $amount = filter_var($_POST['amount'], FILTER_VALIDATE_FLOAT);
-    $category = filter_var($_POST['category'], FILTER_SANITIZE_STRING);
-    $description = filter_var($_POST['description'], FILTER_SANITIZE_STRING);
-    $date = filter_var($_POST['date'], FILTER_SANITIZE_STRING);
+    $category = trim(htmlspecialchars($_POST['category'], ENT_QUOTES, 'UTF-8'));
+    $description = trim(htmlspecialchars($_POST['description'], ENT_QUOTES, 'UTF-8'));
+    
+    $date = DateTime::createFromFormat('Y-m-d', $_POST['date']);
+    if ($date) {
+        $date = $date->format('Y-m-d');
+    } else {
+        $date = null;
+    }
+    
     $user_id = $_SESSION['user_id'];
 
     // Check if all fields are valid

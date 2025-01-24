@@ -1,5 +1,5 @@
 <?php
-$servername = "localhost";
+$servername = "myproject.local";
 $username = "root";
 $password = "";
 $dbname = "savings_tracker";

@@ -1,17 +1,14 @@
 <?php
-// Enable error reporting for debugging
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-// Database configuration
-$db_host = 'localhost';
+
+$db_host = 'myproject.local';
 $db_username = 'root';
 $db_password = '';
-$db_name = 'savings_tracker'; // Changed from financial_portal to match your database name
+$db_name = 'savings_tracker'; 
 
-// Create database connection
 try {
-    // Add connection options for better security and performance
     $conn = new mysqli(
         $db_host,
         $db_username,
@@ -24,7 +21,6 @@ try {
         throw new Exception("Connection failed: " . $conn->connect_error);
     }
 
-    // Set charset properly with error checking
     if (!$conn->set_charset("utf8mb4")) {
         throw new Exception("Error setting charset: " . $conn->error);
     }
@@ -33,7 +29,6 @@ try {
     die("Database connection failed: " . $e->getMessage());
 }
 
-// Test connection
 try {
     $conn->query("SELECT 1");
 } catch (Exception $e) {
