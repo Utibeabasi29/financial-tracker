@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'db.php';
+require_once 'config.php';
 
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
@@ -12,47 +12,64 @@ $error = '';
 
 // Handle expense submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $amount = filter_var($_POST['amount'], FILTER_VALIDATE_FLOAT);
-    $category = trim(htmlspecialchars($_POST['category'], ENT_QUOTES, 'UTF-8'));
-    $description = trim(htmlspecialchars($_POST['description'], ENT_QUOTES, 'UTF-8'));
-    
-    $date = DateTime::createFromFormat('Y-m-d', $_POST['date']);
-    if ($date) {
-        $date = $date->format('Y-m-d');
-    } else {
-        $date = null;
-    }
-    
-    $user_id = $_SESSION['user_id'];
-
-    // Check if all fields are valid
-    if ($amount && $category && $description && $date) {
-        try {
-            // Prepare statement
-            $stmt = $conn->prepare("INSERT INTO expenses (user_id, amount, category, description, date) VALUES (?, ?, ?, ?, ?)");
-            
-            if (!$stmt) {
-                throw new Exception("Prepare failed: " . $conn->error);
+    if (isset($_POST['action']) && $_POST['action'] === 'delete') {
+        $expense_id = filter_var($_POST['expense_id'], FILTER_VALIDATE_INT);
+        if ($expense_id) {
+            try {
+                $stmt = $conn->prepare("DELETE FROM expenses WHERE id = ? AND user_id = ?");
+                $stmt->bind_param("ii", $expense_id, $_SESSION['user_id']);
+                if ($stmt->execute()) {
+                    $message = "Expense deleted successfully!";
+                } else {
+                    $error = "Error deleting expense";
+                }
+            } catch (Exception $e) {
+                $error = "Error: " . $e->getMessage();
             }
-            
-            // Bind parameters
-            if (!$stmt->bind_param("idsss", $user_id, $amount, $category, $description, $date)) {
-                throw new Exception("Binding parameters failed: " . $stmt->error);
-            }
-            
-            // Execute statement
-            if (!$stmt->execute()) {
-                throw new Exception("Execute failed: " . $stmt->error);
-            }
-            
-            $message = "Expense added successfully!";
-            $stmt->close();
-            
-        } catch (Exception $e) {
-            $error = "Error adding expense: " . $e->getMessage();
         }
     } else {
-        $error = "Please fill all fields correctly";
+        $amount = filter_var($_POST['amount'], FILTER_VALIDATE_FLOAT);
+        $category = trim(htmlspecialchars($_POST['category'], ENT_QUOTES, 'UTF-8'));
+        $description = trim(htmlspecialchars($_POST['description'], ENT_QUOTES, 'UTF-8'));
+        
+        $date = DateTime::createFromFormat('Y-m-d', $_POST['date']);
+        if ($date) {
+            $date = $date->format('Y-m-d');
+        } else {
+            $date = null;
+        }
+        
+        $user_id = $_SESSION['user_id'];
+
+        // Check if all fields are valid
+        if ($amount && $category && $description && $date) {
+            try {
+                // Prepare statement
+                $stmt = $conn->prepare("INSERT INTO expenses (user_id, amount, category, description, date) VALUES (?, ?, ?, ?, ?)");
+                
+                if (!$stmt) {
+                    throw new Exception("Prepare failed: " . $conn->error);
+                }
+                
+                // Bind parameters
+                if (!$stmt->bind_param("idsss", $user_id, $amount, $category, $description, $date)) {
+                    throw new Exception("Binding parameters failed: " . $stmt->error);
+                }
+                
+                // Execute statement
+                if (!$stmt->execute()) {
+                    throw new Exception("Execute failed: " . $stmt->error);
+                }
+                
+                $message = "Expense added successfully!";
+                $stmt->close();
+                
+            } catch (Exception $e) {
+                $error = "Error adding expense: " . $e->getMessage();
+            }
+        } else {
+            $error = "Please fill all fields correctly";
+        }
     }
 }
 
@@ -83,12 +100,13 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="dashboard_design.css">
     <link rel="stylesheet" href="expenses_style.css">
+    <link rel="stylesheet" href=".css">
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>Expense Tracking</h1>
-            <a href="dashboard.php" class="back-btn">Back to Dashboard</a>
+            <a href="home.php" class="back-btn">Home</a>
         </div>
 
         <?php if ($message): ?>
@@ -146,7 +164,16 @@ try {
                                     <div class="expense-category"><?php echo htmlspecialchars($expense['category']); ?></div>
                                     <div class="expense-description"><?php echo htmlspecialchars($expense['description']); ?></div>
                                 </div>
-                                <div class="expense-amount">$<?php echo number_format($expense['amount'], 2); ?></div>
+                                <div class="expense-actions">
+                                    <div class="expense-amount">₦<?php echo number_format($expense['amount'], 2); ?></div>
+                                    <form method="POST" class="delete-form" onsubmit="return confirm('Are you sure you want to delete this expense?');">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="expense_id" value="<?php echo $expense['id']; ?>">
+                                        <button type="submit" class="delete-btn" title="Delete Expense">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
                             </div>
                         <?php endforeach; ?>
                     <?php else: ?>
@@ -156,6 +183,6 @@ try {
             </div>
         </div>
     </div>
-    <script src="expenses.js"></script>
+    <!-- <script src="expenses.js"></script> -->
 </body>
 </html>

@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'config.php';  
+require_once 'config.php';
 
 $goals = null;
 $goals_array = [];
@@ -8,11 +8,6 @@ $goals_array = [];
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
-}
-
-if (isset($_SESSION['flash_message'])) {
-    $message = $_SESSION['flash_message'];
-    unset($_SESSION['flash_message']);
 }
 
 $message = '';
@@ -28,40 +23,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $check_user->bind_param("i", $_SESSION['user_id']);
                 $check_user->execute();
                 $user_result = $check_user->get_result();
-                
+
                 if ($user_result->num_rows === 0) {
                     throw new Exception("Invalid user");
                 }
 
-                // Add error logging to debug the values
-                error_log("Name: " . $_POST['name']);
-                error_log("Target Amount: " . $_POST['target_amount']);
-                error_log("Current Amount: " . $_POST['current_amount']);
-                error_log("Target Date: " . $_POST['target_date']);
-
                 $name = htmlspecialchars($_POST['name'], ENT_QUOTES, 'UTF-8');
                 $target_amount = filter_var($_POST['target_amount'], FILTER_VALIDATE_FLOAT);
                 $current_amount = filter_var($_POST['current_amount'], FILTER_VALIDATE_FLOAT);
-                $target_date = htmlspecialchars($_POST['target_date'], ENT_QUOTES, 'UTF-8');
+                $target_date = $_POST['target_date'];
                 $user_id = $_SESSION['user_id'];
+
+                // Server-side validation for the date
+                $today = date('Y-m-d');
+                if ($target_date < $today) {
+                    throw new Exception("Target date must be in the future.");
+                }
 
                 if (!$name || !$target_amount || !$current_amount || !$target_date) {
                     throw new Exception("All fields are required and must be valid");
                 }
 
-                // Add database selection before insert
                 $conn->select_db("savings_tracker");
 
                 $sql = "INSERT INTO financial_goals (user_id, name, target_amount, current_amount, target_date) 
                         VALUES (?, ?, ?, ?, ?)";
                 $stmt = $conn->prepare($sql);
-                
+
                 if (!$stmt) {
                     throw new Exception("Prepare failed: " . $conn->error);
                 }
 
                 $stmt->bind_param("isdds", $user_id, $name, $target_amount, $current_amount, $target_date);
-                
+
                 if (!$stmt->execute()) {
                     throw new Exception("Execute failed: " . $stmt->error);
                 }
@@ -70,14 +64,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['flash_message'] = $message; // Add flash message
                 header("Location: " . $_SERVER['PHP_SELF']);
                 exit();
-            } elseif ($_POST['action'] === 'update') {
-                $goal_id = $_POST['goal_id'];
-                $current_amount = $_POST['current_amount'];
-                
-                $sql = "UPDATE financial_goals SET current_amount = ? WHERE id = ? AND user_id = ?";
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param("dii", $current_amount, $goal_id, $_SESSION['user_id']);
-                $stmt->execute();
+            } elseif ($_POST['action'] === 'delete') {
+                // Handle goal deletion
+                $goal_id = intval($_POST['goal_id']);
+                $user_id = $_SESSION['user_id'];
+
+                $delete_sql = "DELETE FROM financial_goals WHERE id = ? AND user_id = ?";
+                $delete_stmt = $conn->prepare($delete_sql);
+
+                if (!$delete_stmt) {
+                    throw new Exception("Prepare failed: " . $conn->error);
+                }
+
+                $delete_stmt->bind_param("ii", $goal_id, $user_id);
+
+                if ($delete_stmt->execute() && $delete_stmt->affected_rows > 0) {
+                    $message = "Goal deleted successfully!";
+                } else {
+                    throw new Exception("Failed to delete goal. It may not exist or belong to another user.");
+                }
             }
         }
     } catch (Exception $e) {
@@ -85,12 +90,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Update the goals fetching section
+// Fetch existing goals
 try {
     $user_id = $_SESSION['user_id'];
-    
-    // Debug log
-    error_log("Fetching goals for user_id: " . $user_id);
 
     $sql = "SELECT *, 
             DATEDIFF(target_date, CURDATE()) as days_remaining,
@@ -98,27 +100,23 @@ try {
             FROM financial_goals 
             WHERE user_id = ? 
             ORDER BY created_at DESC";
-            
+
     $stmt = $conn->prepare($sql);
     if (!$stmt) {
         throw new Exception("Prepare failed: " . $conn->error);
     }
-    
+
     $stmt->bind_param("i", $user_id);
     if (!$stmt->execute()) {
         throw new Exception("Execute failed: " . $stmt->error);
     }
-    
+
     $result = $stmt->get_result();
     $goals_array = [];
-    
+
     while ($row = $result->fetch_assoc()) {
         $goals_array[] = $row;
     }
-    
-    // Debug log
-    error_log("Found " . count($goals_array) . " goals");
-    
 } catch (Exception $e) {
     error_log("Error fetching goals: " . $e->getMessage());
     $error = "Error fetching goals: " . $e->getMessage();
@@ -139,7 +137,7 @@ try {
     <div class="container">
         <div class="header">
             <h1>Financial Goals</h1>
-            <a href="dashboard.php" class="back-btn">Back to Dashboard</a>
+            <a href="home.php" class="back-btn">Home</a>
         </div>
 
         <?php if ($message): ?>
@@ -148,8 +146,13 @@ try {
             </div>
         <?php endif; ?>
 
+        <?php if ($error): ?>
+            <div class="alert alert-danger fade-in">
+                <?php echo htmlspecialchars($error); ?>
+            </div>
+        <?php endif; ?>
+
         <div class="goals-container">
-            <!-- Add Goal Form -->
             <div class="goals-form">
                 <h2>Set New Goal</h2>
                 <form method="POST" id="goalForm">
@@ -171,7 +174,7 @@ try {
 
                     <div class="form-group">
                         <label for="target_date">Target Date</label>
-                        <input type="date" name="target_date" required>
+                        <input type="date" name="target_date" id="target_date" min="<?php echo date('Y-m-d'); ?>" required>
                     </div>
 
                     <button type="submit" class="submit-btn">Create Goal</button>
@@ -179,26 +182,34 @@ try {
                 <div id="formFeedback" class="alert" style="display: none;"></div>
             </div>
 
-            <!-- Goals Overview -->
             <div class="goals-overview">
                 <h2>Your Financial Goals</h2>
                 <div class="goals-grid">
                     <?php if (!empty($goals_array)): ?>
                         <?php foreach ($goals_array as $goal): ?>
                             <div class="goal-card fade-in">
-                                <div class="goal-header">
-                                    <h3><?php echo htmlspecialchars($goal['name']); ?></h3>
-                                    <span class="goal-date">
-                                        Target: <?php echo date('M d, Y', strtotime($goal['target_date'])); ?>
-                                    </span>
+                            <div class="goal-header">
+                                <h3><?php echo htmlspecialchars($goal['name']); ?></h3>
+                                <div class="goal-actions">
+                                    <a href="edit_goal.php?goal_id=<?php echo $goal['id']; ?>" class="edit-btn" title="Edit Goal">
+                                        <i class="fas fa-edit"></i> Edit 
+                                    </a>
+                                    <form method="POST" class="delete-form" onsubmit="return confirm('Are you sure you want to delete this goal?');">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="goal_id" value="<?php echo $goal['id']; ?>">
+                                        <button type="submit" class="delete-btn" title="Delete Goal">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                    </form>
                                 </div>
+                            </div>
                                 <div class="goal-progress">
                                     <div class="progress-bar">
                                         <div class="progress" style="width: <?php echo min(100, $goal['progress']); ?>%"></div>
                                     </div>
                                     <div class="progress-numbers">
-                                        <span>$<?php echo number_format($goal['current_amount'], 2); ?></span>
-                                        <span>of $<?php echo number_format($goal['target_amount'], 2); ?></span>
+                                        <span>₦<?php echo number_format($goal['current_amount'], 2); ?></span>
+                                        <span>of ₦<?php echo number_format($goal['target_amount'], 2); ?></span>
                                     </div>
                                 </div>
                                 <div class="goal-status">
@@ -214,6 +225,5 @@ try {
             </div>
         </div>
     </div>
-    <script src="goals.js"></script>
 </body>
 </html>

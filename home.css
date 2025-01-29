@@ -228,6 +228,8 @@ footer {
     border-top: 1px solid #444;
 }
 
+
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .nav-links {

@@ -21,52 +21,57 @@ $sql = "SELECT category, SUM(amount) as total
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("iss", $user_id, $start_date, $end_date);
 $stmt->execute();
-$expense_summary = $stmt->get_result();
+$expense_summary_result = $stmt->get_result();
+$expense_summary = [];
+while ($row = $expense_summary_result->fetch_assoc()) {
+    $expense_summary[] = $row;
+}
 
-// Fetch monthly spending trend
-$sql = "SELECT DATE_FORMAT(date, '%Y-%m') as month, SUM(amount) as total 
-        FROM expenses 
-        WHERE user_id = ? 
-        GROUP BY DATE_FORMAT(date, '%Y-%m')
-        ORDER BY month DESC 
-        LIMIT 6";
+// Fetch budget information for the selected date range
+$sql = "SELECT category, amount as budget, month
+        FROM budgets
+        WHERE user_id = ? AND DATE_FORMAT(month, '%Y-%m') BETWEEN DATE_FORMAT(?, '%Y-%m') AND DATE_FORMAT(?, '%Y-%m')";
 $stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $user_id);
+$stmt->bind_param("iss", $user_id, $start_date, $end_date);
 $stmt->execute();
-$monthly_trend = $stmt->get_result();
+$budget_result = $stmt->get_result();
+$budgets = [];
+while ($row = $budget_result->fetch_assoc()) {
+    $budgets[] = $row;
+}
 
-// Fetch budget vs actual spending
-$sql = "SELECT b.category, b.amount as budget, COALESCE(SUM(e.amount), 0) as spent
-        FROM budgets b
-        LEFT JOIN expenses e ON b.category = e.category 
-        AND DATE_FORMAT(e.date, '%Y-%m') = b.month
-        WHERE b.user_id = ? AND b.month = DATE_FORMAT(CURRENT_DATE, '%Y-%m')
-        GROUP BY b.category";
+// Fetch financial goals for the selected date range
+$sql = "SELECT name, target_amount, current_amount, target_date, created_at
+        FROM financial_goals
+        WHERE user_id = ? AND ((target_date >= ? AND target_date <= ?) OR (created_at >= ? AND created_at <= ?))";
 $stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $user_id);
+$stmt->bind_param("issss", $user_id, $start_date, $end_date, $start_date, $end_date);
 $stmt->execute();
-$budget_comparison = $stmt->get_result();
+$goals_result = $stmt->get_result();
+$financial_goals = [];
+while ($row = $goals_result->fetch_assoc()) {
+    $financial_goals[] = $row;
+}
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Financial Reports</title>
+    <title>Financial Overview</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="dashboard_design.css">
     <link rel="stylesheet" href="reports_style.css">
 </head>
+
 <body>
     <div class="container">
         <div class="header">
             <h1>Financial Reports</h1>
-            <a href="dashboard.php" class="back-btn">Back to Dashboard</a>
+            <a href="home.php" class="back-btn">Home</a>
         </div>
 
-        <!-- Date Range Filter -->
         <div class="date-filter">
             <form method="GET">
                 <div class="filter-group">
@@ -82,77 +87,87 @@ $budget_comparison = $stmt->get_result();
         </div>
 
         <div class="reports-grid">
-            <!-- Expense by Category -->
             <div class="report-card">
                 <h2>Expenses by Category</h2>
-                <canvas id="categoryChart"></canvas>
+                <?php if (count($expense_summary) > 0): ?>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Total Amount (₦)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($expense_summary as $expense): ?>
+                                <tr>
+                                    <td><?php echo $expense['category']; ?></td>
+                                    <td>₦<?php echo number_format($expense['total'], 2); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php else: ?>
+                    <p>No expenses recorded for the selected period.</p>
+                <?php endif; ?>
             </div>
 
-            <!-- Monthly Spending Trend -->
             <div class="report-card">
-                <h2>Monthly Spending Trend</h2>
-                <canvas id="trendChart"></canvas>
+                <h2>Budgets</h2>
+                <?php if (count($budgets) > 0): ?>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Budget (₦)</th>
+                                <th>Month</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($budgets as $budget): ?>
+                                <tr>
+                                    <td><?php echo $budget['category']; ?></td>
+                                    <td>₦<?php echo number_format($budget['budget'], 2); ?></td>
+                                    <td><?php echo date('F Y', strtotime($budget['month'])); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php else: ?>
+                    <p>No budgets set for the selected period.</p>
+                <?php endif; ?>
             </div>
 
-            <!-- Budget vs Actual -->
             <div class="report-card">
-                <h2>Budget vs Actual Spending</h2>
-                <div class="budget-comparison">
-                    <?php while ($row = $budget_comparison->fetch_assoc()): ?>
-                        <div class="comparison-item">
-                            <div class="category-label">
-                                <?php echo ucfirst($row['category']); ?>
-                            </div>
-                            <div class="comparison-bar">
-                                <div class="budget-bar" style="width: 100%">
-                                    $<?php echo number_format($row['budget'], 2); ?>
-                                </div>
-                                <?php 
-                                $percentage = ($row['spent'] / $row['budget']) * 100;
-                                $bar_class = $percentage > 100 ? 'over' : 'under';
-                                ?>
-                                <div class="actual-bar <?php echo $bar_class; ?>" 
-                                     style="width: <?php echo min(100, $percentage); ?>%">
-                                    $<?php echo number_format($row['spent'], 2); ?>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endwhile; ?>
-                </div>
+                <h2>Financial Goals</h2>
+                <?php if (count($financial_goals) > 0): ?>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Goal Name</th>
+                                <th>Target Amount (₦)</th>
+                                <th>Saved Amount (₦)</th>
+                                <th>Target Date</th>
+                                <th>Created On</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($financial_goals as $goal): ?>
+                                <tr>
+                                    <td><?php echo $goal['name']; ?></td>
+                                    <td>₦<?php echo number_format($goal['target_amount'], 2); ?></td>
+                                    <td>₦<?php echo number_format($goal['current_amount'], 2); ?></td>
+                                    <td><?php echo date('F j, Y', strtotime($goal['target_date'])); ?></td>
+                                    <td><?php echo date('F j, Y', strtotime($goal['created_at'])); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php else: ?>
+                    <p>No financial goals recorded for the selected period.</p>
+                <?php endif; ?>
             </div>
         </div>
     </div>
-
-    <script>
-        // Prepare data for charts
-        const categoryLabels = [<?php 
-            $expense_summary->data_seek(0);
-            while ($row = $expense_summary->fetch_assoc()) {
-                echo "'" . ucfirst($row['category']) . "',";
-            }
-        ?>];
-        
-        const categoryValues = [<?php 
-            $expense_summary->data_seek(0);
-            while ($row = $expense_summary->fetch_assoc()) {
-                echo $row['total'] . ",";
-            }
-        ?>];
-
-        const trendLabels = [<?php 
-            $monthly_trend->data_seek(0);
-            while ($row = $monthly_trend->fetch_assoc()) {
-                echo "'" . date('M Y', strtotime($row['month'] . '-01')) . "',";
-            }
-        ?>];
-
-        const trendValues = [<?php 
-            $monthly_trend->data_seek(0);
-            while ($row = $monthly_trend->fetch_assoc()) {
-                echo $row['total'] . ",";
-            }
-        ?>];
-    </script>
-    <script src="reports.js"></script>
 </body>
-</html> 
+
+</html>

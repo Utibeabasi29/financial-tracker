@@ -36,7 +36,7 @@
         </div>
     </form>
     <?php
-    require 'db.php';
+    require 'config.php';
     session_start();
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -53,7 +53,7 @@
             if (password_verify($password, $user['password'])) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
-                header("Location: dashboard.php"); // Redirect to dashboard
+                header("Location: home.php");
                 exit();
             } else {
                 echo "<div class='error-message'>Invalid password.</div>";

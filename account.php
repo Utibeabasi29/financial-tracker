@@ -1,7 +1,7 @@
 <?php
 session_start();
 
-require_once 'db.php';
+require_once 'config.php';
 
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
@@ -66,7 +66,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <div class="container">
         <div class="header">
             <h1>Account Settings</h1>
-            <a href="dashboard.php" class="btn">Back to Dashboard</a>
+            <a href="home.php" class="btn">Home</a>
         </div>
 
         <div class="account-container">

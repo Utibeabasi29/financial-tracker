@@ -42,7 +42,7 @@
         </div>
     </form>
     <?php
-    require 'db.php'; // Include database connection
+    require 'config.php'; // Include database connection
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fullname = $_POST['username'];
@@ -63,7 +63,7 @@
             $stmt->bind_param("ssss", $fullname, $fullname, $email, $password);
 
             if ($stmt->execute()) {
-                header("Location: dashboard.php");
+                header("Location: home.php");
                 exit();
             } else {
                 echo '<div class="alert alert-error">Error: ' . $stmt->error . '</div>';
